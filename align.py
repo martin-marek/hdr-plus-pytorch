@@ -13,8 +13,8 @@ def n_tiles(layer_h: int, layer_w: int,
     Compute the desired number of tiles in a layer,
     such that they overlap.
     """
-    n_tiles_y = layer_h // (tile_h // 2) - 1 # TODO: why?
-    n_tiles_x = layer_w // (tile_w // 2) - 1 # TODO: why?
+    n_tiles_y = layer_h // (tile_h // 2)
+    n_tiles_x = layer_w // (tile_w // 2)
     return n_tiles_x, n_tiles_y
 
 
@@ -38,7 +38,7 @@ def tile_indices(layer_w: int, layer_h: int,
     y = y_min[:, None] + dy[None, :] # [n_tiles_y, tile_h]
     y = y[:, None, :, None].repeat(1, n_tiles_x, 1, tile_w) # [n_tiles_y, n_tiles_x, tile_h, tile_w]
     
-    return x, y
+    return x, y # (2 x [n_tiles_y, n_tiles_x, tile_h, tile_w])
 
 
 @ torch.jit.script
@@ -72,7 +72,7 @@ def shift_indices(x: Tensor, y: Tensor,
     y = y.flatten(-2) # [n_tiles_y, n_tiles_x, tile_h, tile_w, n_pos*n_pos]
     y = y.permute(4, 0, 1, 2, 3) # [n_pos*n_pos, n_tiles_y, n_tiles_x, tile_h, tile_w]
     
-    return x, y
+    return x, y # (2 x [n_pos*n_pos, n_tiles_y, n_tiles_x, tile_h, tile_w])
 
 
 @ torch.jit.script
@@ -140,17 +140,17 @@ def align_layers(ref_layer: Tensor,
     n_pos = search_dist_max - search_dist_min + 1
 
     # gather tiles from the reference layer
-    x, y = tile_indices(layer_w, layer_h, tile_w, tile_h, n_tiles_x, n_tiles_y, device)
-    x, y = clamp(x, y, layer_w, layer_h)
+    x, y = tile_indices(layer_w, layer_h, tile_w, tile_h, n_tiles_x, n_tiles_y, device) # [n_tiles_y, n_tiles_x, tile_h, tile_w]
+    x, y = clamp(x, y, layer_w, layer_h) # [n_tiles_y, n_tiles_x, tile_h, tile_w]
     ref_tiles = ref_layer[:, y, x] # [1, n_tiles_y, n_tiles_x, tile_h, tile_w]
 
     # gather tiles from the comparison layer
-    x, y = tile_indices(layer_w, layer_h, tile_w, tile_h, n_tiles_x, n_tiles_y, device)
-    prev_alignment = upscale_previous_alignment(prev_alignment, downscale_factor, n_tiles_x, n_tiles_y)
+    x, y = tile_indices(layer_w, layer_h, tile_w, tile_h, n_tiles_x, n_tiles_y, device) # [n_tiles_y, n_tiles_x, tile_h, tile_w]
+    prev_alignment = upscale_previous_alignment(prev_alignment, downscale_factor, n_tiles_x, n_tiles_y) # [2, n_tiles_y, n_tiles_x]
     x += prev_alignment[0, :, :, None, None]
     y += prev_alignment[1, :, :, None, None]
-    x, y = shift_indices(x, y, search_dist_min, search_dist_max)
-    x, y = clamp(x, y, layer_w, layer_h)
+    x, y = shift_indices(x, y, search_dist_min, search_dist_max) # [n_pos*n_pos, n_tiles_y, n_tiles_x, tile_h, tile_w]
+    x, y = clamp(x, y, layer_w, layer_h) # [n_pos*n_pos, n_tiles_y, n_tiles_x, tile_h, tile_w]
     comp_tiles = comp_layer[0, y, x] # [n_pos*n_pos, n_tiles_y, n_tiles_x, tile_h, tile_w]
 
     # compute the difference between the comparison and reference tiles
@@ -168,7 +168,7 @@ def align_layers(ref_layer: Tensor,
     # combine the current alignment the previous alignment
     alignment += prev_alignment
     
-    return alignment
+    return alignment # [2, n_tiles_y, n_tiles_x]
 
 
 @ torch.jit.script

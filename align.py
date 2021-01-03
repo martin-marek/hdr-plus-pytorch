@@ -3,7 +3,7 @@ import torchvision
 import torch.nn.functional as F
 
 from torch import Tensor
-from typing import Optional, List, Dict
+from typing import List
 
 
 @ torch.jit.script
@@ -122,13 +122,14 @@ def align_layers(ref_layer: Tensor,
                  comp_layer: Tensor,
                  tile_shape: List[int],
                  search_region: List[int],
-                 downscale_factor: int = 0,
-                 prev_alignment: Tensor = torch.zeros([2, 1, 1])):
-    assert ref_layer.shape == comp_layer.shape
+                 prev_alignment: Tensor,
+                 downscale_factor: int = 1):
     """
     Estimates the optical flow between two distinct layers of image pyramids.
     `comp_layer` is matched to `ref_layer` using tile comparisons.
-    `prev_alignment` is an optional alignment from a coarser pyramid layer.
+    `prev_alignment` is an alignment from a coarser pyramid layer.
+    `downscale_factor` is the scaling factor between the previous layer
+    and current layer, only required if `prev_alignment` is not zeros.
     """
     device = ref_layer.device
     # compute dimensions of layer and tiles
@@ -145,7 +146,6 @@ def align_layers(ref_layer: Tensor,
 
     # gather tiles from the comparison layer
     x, y = tile_indices(layer_w, layer_h, tile_w, tile_h, n_tiles_x, n_tiles_y, device)
-    prev_alignment = prev_alignment.to(device)
     prev_alignment = upscale_previous_alignment(prev_alignment, downscale_factor, n_tiles_x, n_tiles_y)
     x += prev_alignment[0, :, :, None, None]
     y += prev_alignment[1, :, :, None, None]
@@ -224,7 +224,7 @@ def align_images(ref_image: Tensor,
     alignments = torch.zeros([N, 2, H, W], device=device)
     for i, comp_pyramid in enumerate(comp_pyramids):
         # start off with default alignment (no shift between images)
-        alignment = torch.zeros([2, 1, 1])
+        alignment = torch.zeros([2, 1, 1], device=device)
         
         # iterative improve the alignment in each pyramid layer
         for layer_idx in torch.flip(torch.arange(len(ref_pyramid)), [0]):
@@ -232,8 +232,8 @@ def align_images(ref_image: Tensor,
                              comp_pyramid[layer_idx],
                              tile_shape_list[layer_idx],
                              search_region_list[layer_idx],
-                             downscale_factor_list[min(layer_idx+1, len(ref_pyramid)-1)],
-                             alignment)
+                             alignment,
+                             downscale_factor_list[min(layer_idx+1, len(ref_pyramid)-1)])
             
         # scale the alignment to image resolution
         alignment = upscale_previous_alignment(alignment, downscale_factor_list[0], W, H)

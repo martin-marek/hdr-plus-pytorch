@@ -7,4 +7,4 @@ Currently, only JPEG images are supported with a simple non-robust merge and no 
 
 Supports CPU, CUDA, and TorchScript.
  
-![alt text](results/portrait_extreme_noise.jpg)
+![alt text](results/portrait_jozef.jpg)

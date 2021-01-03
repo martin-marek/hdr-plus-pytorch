@@ -1,7 +1,3 @@
 .ipynb_checkpoints
 __pycache__
 deprecated
-test_images/rings
-test_images/characters/pos.psd
-test_images/portrait_dng
-test_images/portrait_noisy

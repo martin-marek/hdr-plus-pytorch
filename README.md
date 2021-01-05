@@ -4,7 +4,5 @@ This a simplified PyTorch implementation of HDR+, the backbone of computational 
 
 Using an 11GB GPU, alignment works for up to 3MP grayscale images (same as the official implementation), at ~100 ms / image. 
 Currently, only JPEG images are supported with a simple non-robust merge and no post-processing. Tile comparisons are performed in pixel space, without any FFTs.
-
-Supports CPU, CUDA, and TorchScript.
  
 ![alt text](results/portrait_jozef_comparison.jpg)

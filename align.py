@@ -32,7 +32,7 @@ def tile_indices(layer_w: int, layer_h: int,
     x = x_min[:, None] + dx[None, :] # [n_tiles_x, tile_w]
     x = x[None, :, None, :].repeat(n_tiles_y, 1, tile_h, 1) # [n_tiles_y, n_tiles_x, tile_h, tile_w]
     
-    # compute x indices
+    # compute y indices
     y_min = torch.linspace(0, layer_h-tile_h-1, n_tiles_y, dtype=torch.int16, device=device) # [n_tiles_y]
     dy = torch.arange(0, tile_h, device=device) # [tile_h]
     y = y_min[:, None] + dy[None, :] # [n_tiles_y, tile_h]
@@ -52,8 +52,8 @@ def shift_indices(x: Tensor, y: Tensor,
     tile "displacements". All the displacements are returned
     along the first (batch) dimension. To recover the displacement
     from the batch dimension, use the following conversion:
-    >> dy = idx // n_pos + search_dist_min
-    >> dx = idx % n_pos + search_dist_min
+    >>> dy = idx // n_pos + search_dist_min
+    >>> dx = idx % n_pos + search_dist_min
     """
     # create a tensor of displacements
     device = x.device

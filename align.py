@@ -3,7 +3,7 @@ import torchvision
 import torch.nn.functional as F
 
 from torch import Tensor
-from typing import List
+from typing import List, Optional
 
 
 @ torch.jit.script
@@ -203,9 +203,9 @@ def warp_images(images: Tensor,
 @ torch.jit.script
 def align_images(ref_image: Tensor,
                  comp_images: Tensor,
-                 downscale_factor_list: List[int],
-                 tile_shape_list: List[List[int]],
-                 search_region_list: List[List[int]]):
+                 downscale_factor_list: Optional[List[int]] = None,
+                 tile_shape_list: Optional[List[List[int]]] = None,
+                 search_region_list: Optional[List[List[int]]] = None):
     """
     Aligns images using tiles in image pyramids.
     `downscale_factor_list` is the scaling factor between
@@ -215,6 +215,14 @@ def align_images(ref_image: Tensor,
     for each tile in each pyramid layer.
     """
     device = ref_image.device
+    
+    # process args
+    # torchscript doesn't support lists as default values, so for some
+    # args, the default is None and the lists are instantiated here
+    if downscale_factor_list is None: downscale_factor_list = [1, 2, 4, 4]
+    if tile_shape_list is None: tile_shape_list = [[16, 16], [16, 16], [16, 16], [16, 16]]
+    if search_region_list is None: search_region_list = [[-1, 1], [-4, 4], [-4, 4], [-4, 4]]
+    
     # build b&w image pyramids from images
     ref_pyramid = build_pyramid(ref_image, downscale_factor_list)
     comp_pyramids = [build_pyramid(image, downscale_factor_list) for image in comp_images]

@@ -17,19 +17,14 @@ import torch
 import align
 
 # load image burst
-images = torch.zeros([10, 3, 1000, 1000], dtype=torch.float16, device='cuda')
-
-# split burst into a 'reference' image and 'comparison' images
-# which are to be aligned with the 'reference' image
-ref_idx = 0
-ref_image = images[ref_idx]
-comp_images = images[torch.arange(len(images)) != ref_idx]
+reference_image = torch.zeros([3, 1000, 1000], dtype=torch.float16, device='cuda')
+comparison_images = torch.zeros([10, 3, 1000, 1000], dtype=torch.float16, device='cuda')
 
 # align
-aligned_images = align.align_images(ref_image, comp_images)
+aligned_images = align.align_images(reference_image, comparison_images)
 
 # merge
-merged_image = (ref_image + aligned_images.sum(0)) / (1 + len(aligned_images))
+merged_image = (reference_image + aligned_images.sum(0)) / (1 + len(aligned_images))
 merged_image = torch.clip(merged_image, 0, 1)
 ```
 

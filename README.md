@@ -10,6 +10,8 @@ Using an 11GB GPU, alignment works for up to 3MP grayscale images (same as the o
 
 # Usage
 
+Here's a minimal example to align and merge a burst. For more, see [demo.ipynb](demo.ipynb).
+
 ```python
 import torch
 import align
@@ -17,7 +19,7 @@ import align
 # load image burst
 images = torch.zeros([10, 3, 1000, 1000], dtype=torch.float16, device='cuda')
 
-# split images into a 'reference' image and 'comparison' images
+# split burst into a 'reference' image and 'comparison' images
 # which are to be aligned with the 'reference' image
 ref_idx = 0
 ref_image = images[ref_idx]

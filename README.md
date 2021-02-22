@@ -28,6 +28,12 @@ merged_image = (reference_image + aligned_images.sum(0)) / (1 + len(aligned_imag
 merged_image = torch.clip(merged_image, 0, 1)
 ```
 
+# Implementation details
+
+The core of my implementation is stacking all tile displacements along the batch dimension and performing comparisons with the help of broadcasting. I've illustrated this for the simplest case of 9 displacements of a 5x5 tile. In reality, the number of tiles and displacements is large. I've annotated the shape of most tensors in my code, so that it's easy to see what's going on in every line.
+
+![alt text](illustrations/tiles.png)
+
 # Missing features
 - robust merge
 - RAW support

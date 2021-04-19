@@ -1,16 +1,20 @@
 # HDR+ PyTorch
 
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/martin-marek/hdr-plus-pytorch/blob/main/demo.ipynb)
+
 This is a simplified PyTorch implementation of HDR+, the backbone of computational photography in Google Pixel phones, described in [Burst photography for high dynamic range and low-light imaging on mobile cameras](http://static.googleusercontent.com/media/www.hdrplusdata.org/en//hdrplus.pdf).
 
 Using an 11GB GPU, alignment works for up to 3MP grayscale images (same as the official implementation), at ~100 ms / image. 
  
 # Example
+
+I took a burst of 35 images at ISO 12,800 on Sony RX100-V and boosted it by +2EV. Here's a comparison of a [single image](https://github.com/martin-marek/hdr-plus-pytorch/raw/main/illustrations/burst_sample.jpg) from the burst vs. a [merge of all the images](https://github.com/martin-marek/hdr-plus-pytorch/raw/main/illustrations/merged_image.jpg).
  
-![alt text](results/portrait_jozef_comparison.jpg)
+![alt text](illustrations/before_and_after.jpg)
 
 # Usage
 
-Here's a minimal example to align and merge a burst. For more, see [demo.ipynb](demo.ipynb).
+Here's a minimal example to align and merge a burst. For more, see the [Colab Notebook](https://colab.research.google.com/github/martin-marek/hdr-plus-pytorch/blob/main/demo.ipynb).
 
 ```python
 import torch
@@ -34,10 +38,14 @@ The core of my implementation is stacking all tile displacements along the batch
 
 ![alt text](illustrations/tiles.png)
 
-# Missing features
-- robust merge
-- RAW support
-- color post-processing
-- automatic selection of the reference image
-- CPU support (requires float32 instead of float16 for some ops)
-- tile comparison in Fourier space
+# Features
+- [x] jpeg support
+- [ ] RAW support
+- [x] simple merge
+- [ ] robust merge
+- [x] tile comparison in pixel space
+- [ ] tile comparison in Fourier space
+- [x] CUDA support
+- [ ] CPU support (requires float32 instead of float16 for some ops)
+- [ ] color post-processing
+- [ ] automatic selection of the reference image

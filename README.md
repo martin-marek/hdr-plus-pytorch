@@ -4,7 +4,7 @@
 
 This is a simplified PyTorch implementation of HDR+, the backbone of computational photography in Google Pixel phones, described in [Burst photography for high dynamic range and low-light imaging on mobile cameras](http://static.googleusercontent.com/media/www.hdrplusdata.org/en//hdrplus.pdf).
 
-Using an 11GB GPU, alignment works for up to 3MP grayscale images (same as the official implementation), at ~100 ms / image. 
+Using a free Colab GPU, aligning 35 20MP raw images takes roughly 13 seconds.
  
 # Example
 
@@ -14,22 +14,12 @@ I took a burst of 35 images at ISO 12,800 on Sony RX100-V and boosted it by +2EV
 
 # Usage
 
-Here's a minimal example to align and merge a burst. For more, see the [Colab Notebook](https://colab.research.google.com/github/martin-marek/hdr-plus-pytorch/blob/main/demo.ipynb).
+Here's a minimal example to align and merge a burst of raw images. For more, see the [Colab Notebook](https://colab.research.google.com/github/martin-marek/hdr-plus-pytorch/blob/main/demo.ipynb).
 
 ```python
-import torch
-import align
-
-# load image burst
-reference_image = torch.zeros([3, 1000, 1000], dtype=torch.float16, device='cuda')
-comparison_images = torch.zeros([10, 3, 1000, 1000], dtype=torch.float16, device='cuda')
-
-# align
-aligned_images = align.align_images(reference_image, comparison_images)
-
-# merge
-merged_image = (reference_image + aligned_images.sum(0)) / (1 + len(aligned_images))
-merged_image = torch.clip(merged_image, 0, 1)
+import torch, align
+images = torch.zeros([5, 1, 1000, 1000])
+merged_image = align.align_and_merge(images)
 ```
 
 # Implementation details
@@ -40,12 +30,12 @@ The core of my implementation is stacking all tile displacements along the batch
 
 # Features
 - [x] jpeg support
-- [ ] RAW support
+- [x] RAW support
 - [x] simple merge
 - [ ] robust merge
 - [x] tile comparison in pixel space
 - [ ] tile comparison in Fourier space
 - [x] CUDA support
-- [ ] CPU support (requires float32 instead of float16 for some ops)
+- [x] CPU support (very slow)
 - [ ] color post-processing
 - [ ] automatic selection of the reference image

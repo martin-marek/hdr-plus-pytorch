@@ -2,3 +2,5 @@
 .ipynb_checkpoints
 __pycache__
 deprecated
+demo_local
+bursts

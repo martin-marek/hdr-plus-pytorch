@@ -3,12 +3,13 @@ import torchvision
 import torch.nn.functional as F
 
 from torch import Tensor
-from typing import List, Optional
+from typing import Tuple, List, Optional
 
 
-@ torch.jit.script
+@torch.jit.script
 def n_tiles(layer_h: int, layer_w: int,
-            tile_h: int, tile_w: int):
+            tile_h: int, tile_w: int
+           ) -> Tuple[int, int]:
     """
     Compute the desired number of tiles in a layer,
     such that they overlap.
@@ -18,11 +19,12 @@ def n_tiles(layer_h: int, layer_w: int,
     return n_tiles_x, n_tiles_y
 
 
-@ torch.jit.script
+@torch.jit.script
 def tile_indices(layer_w: int, layer_h: int,
                  tile_w: int, tile_h: int,
                  n_tiles_x: int, n_tiles_y: int,
-                 device: torch.device):
+                 device: torch.device
+                ) -> Tuple[Tensor, Tensor]:
     """
     Computes the indices of tiles along a layer.
     """
@@ -41,10 +43,11 @@ def tile_indices(layer_w: int, layer_h: int,
     return x, y # (2 x [n_tiles_y, n_tiles_x, tile_h, tile_w])
 
 
-@ torch.jit.script
+@torch.jit.script
 def shift_indices(x: Tensor, y: Tensor,
                   search_dist_min: int,
-                  search_dist_max: int):
+                  search_dist_max: int
+                 ) -> Tuple[Tensor, Tensor]:
     """
     Given a tensor of tile indices, shift these indices by
     [search_dist_min, search_dist_max] in both x- and y-directions.
@@ -75,9 +78,10 @@ def shift_indices(x: Tensor, y: Tensor,
     return x, y # (2 x [n_pos*n_pos, n_tiles_y, n_tiles_x, tile_h, tile_w])
 
 
-@ torch.jit.script
+@torch.jit.script
 def clamp(x: Tensor, y: Tensor,
-          layer_w: int, layer_h: int):
+          layer_w: int, layer_h: int
+         ) -> Tuple[Tensor, Tensor]:
     """
     Clamp indices to layer shape.
     """
@@ -86,30 +90,41 @@ def clamp(x: Tensor, y: Tensor,
     return x, y
 
 
-@ torch.jit.script
+@torch.jit.script
 def upscale_previous_alignment(alignment: Tensor,
                                downscale_factor: int,
-                               n_tiles_x: int, n_tiles_y: int):
+                               n_tiles_x: int, n_tiles_y: int
+                              ) -> Tensor:
     """
     When layers in an image pyramid are iteratively compared,
     the absolute pixel distances in each layer represent different
     relative distances. This function interpolates an optical flow
     from one resolution to another, taking care to scale the values.
     """
-    alignment = alignment[None].to(torch.float16) # [1, 2, n_tiles_y, n_tiles_x]
+    alignment = alignment[None].float() # [1, 2, n_tiles_y, n_tiles_x]
     alignment = F.interpolate(alignment, size=(n_tiles_y, n_tiles_x), mode='bilinear', align_corners=False)
     alignment *= downscale_factor # [1, 2, n_tiles_y, n_tiles_x]
     alignment = (alignment[0]).to(torch.int16) # [2, n_tiles_y, n_tiles_x]
     return alignment
 
 
-@ torch.jit.script
+@torch.jit.script
 def build_pyramid(image: Tensor,
-                  downscale_factor_list: List[int]):
+                  raw: bool,
+                  downscale_factor_list: List[int],
+                 ) -> List[Tensor]:
     """
     Create an image pyramid from a single image.
     """
-    layer = torchvision.transforms.functional.adjust_saturation(image, 0.0)[:1]
+    # if the image is in raw format (i.e. bayer pixels are used), convert each
+    # group of RGGB pixels in the bayer matrix to a single b&w super-pixel
+    if raw:    
+        layer = F.avg_pool2d(image[None], 2)[0]
+    else:
+        # othweise, assume that the image is a demosaiced RGB image and
+        # convert the RGB channels to a single b&w channel
+        layer = torchvision.transforms.functional.adjust_saturation(image, 0.0)[:1]
+
     pyramid = []
     for downscale_factor in downscale_factor_list:
         layer = F.avg_pool2d(layer, downscale_factor)
@@ -123,13 +138,15 @@ def align_layers(ref_layer: Tensor,
                  tile_shape: List[int],
                  search_region: List[int],
                  prev_alignment: Tensor,
-                 downscale_factor: int = 1):
+                 downscale_factor: int = 1
+                ) -> Tensor:
     """
-    Estimates the optical flow between two distinct layers of image pyramids.
-    `comp_layer` is matched to `ref_layer` using tile comparisons.
-    `prev_alignment` is an alignment from a coarser pyramid layer.
-    `downscale_factor` is the scaling factor between the previous layer
-    and current layer, only required if `prev_alignment` is not zeros.
+    Estimates the optical flow between layers of two distinct image pyramids.
+    
+    Args:
+        comp_layer: the layer to be aligned to `ref_layer`
+        prev_alignment: alignment from a coarser pyramid layer
+        downscale_factor: scaling factor between the previous layer and current layer, only required if `prev_alignment` is not zeros
     """
     device = ref_layer.device
     # compute dimensions of layer and tiles
@@ -165,15 +182,16 @@ def align_layers(ref_layer: Tensor,
     # save the current alignment
     alignment = torch.stack([dx, dy], 0) # [2, n_tiles_y, n_tiles_x]
     
-    # combine the current alignment the previous alignment
+    # combine the current alignment with the previous alignment
     alignment += prev_alignment
     
     return alignment # [2, n_tiles_y, n_tiles_x]
 
 
-@ torch.jit.script
+@torch.jit.script
 def warp_images(images: Tensor,
-                alignments: Tensor):
+                alignments: Tensor
+               ) -> Tensor:
     """
     Given a batch of images and their optical
     flows with respect to a reference image,
@@ -183,38 +201,44 @@ def warp_images(images: Tensor,
     # start off with a generic tensor of indices of each pixel
     N, C, H, W = images.shape
     grid = torch.meshgrid(torch.arange(H, device=device), torch.arange(W, device=device))
-    grid = torch.stack([grid[1], grid[0]], dim=0).to(torch.float16)
+    grid = torch.stack([grid[1], grid[0]], dim=0).float()
     grid = grid[None].repeat_interleave(repeats=N, dim=0)
 
     # apply the optical flow to the indices
     grid += alignments
     
     # scale the indices to [-1, 1] in x and y
-    grid[:, 0] = (grid[:, 0] / W)*2 - 1
-    grid[:, 1] = (grid[:, 1] / H)*2 - 1
+    grid[:, 0] = (grid[:, 0] / (W-1))*2 - 1
+    grid[:, 1] = (grid[:, 1] / (H-1))*2 - 1
     
     # apply the grid of indices to warp the images
     grid = grid.permute(0, 2, 3, 1)
-    images_warped = torch.nn.functional.grid_sample(images, grid, align_corners=True, padding_mode='border')
+    images_warped = torch.nn.functional.grid_sample(images, grid, mode='nearest', align_corners=True, padding_mode='zeros')
     
     return images_warped
 
 
-@ torch.jit.script
-def align_images(ref_image: Tensor,
-                 comp_images: Tensor,
-                 downscale_factor_list: Optional[List[int]] = None,
-                 tile_shape_list: Optional[List[List[int]]] = None,
-                 search_region_list: Optional[List[List[int]]] = None):
+@torch.jit.script
+def align_and_merge(images: Tensor,
+                    ref_idx: int = 0,
+                    device: torch.device = torch.device('cpu'),
+                    downscale_factor_list: Optional[List[int]] = None,
+                    tile_shape_list: Optional[List[List[int]]] = None,
+                    search_region_list: Optional[List[List[int]]] = None
+                   ) -> Tensor:
     """
-    Aligns images using tiles in image pyramids.
-    `downscale_factor_list` is the scaling factor between
-    image pyramid layers.
-    `tile_shape_list` is the shape of tiles in each pyramid layer.
-    `search_region_list` is the search distance [min, max]
-    for each tile in each pyramid layer.
+    Align and merge a burst of images. If the images only have
+    one channel, it is assumed that the images correspond to Bayer
+    pixels (in a raw file). Otherwise, it is assumed that the channels
+    are RGB.
+
+    Args:
+        images: burst of shape (num_frames, channels, height, width)
+        raw: treat the input as Bayer raw pixels
+        downscale_factor_list: scaling factor between image pyramid layers
+        tile_shape_list: shape of tiles in each pyramid layer
+        search_region_list: search distance [min, max] for each tile in each pyramid layer
     """
-    device = ref_image.device
     
     # process args
     # torchscript doesn't support lists as default values, so for some
@@ -222,15 +246,26 @@ def align_images(ref_image: Tensor,
     if downscale_factor_list is None: downscale_factor_list = [1, 2, 4, 4]
     if tile_shape_list is None: tile_shape_list = [[16, 16], [16, 16], [16, 16], [16, 16]]
     if search_region_list is None: search_region_list = [[-1, 1], [-4, 4], [-4, 4], [-4, 4]]
+        
+    # check whether the images are in raw (Bayer) or RGB format
+    N, C, H, W = images.shape
+    raw = C == 1
+
+    # build a pyramid from the reference image
+    ref_idx = torch.tensor(ref_idx)
+    ref_image = images[ref_idx].to(device)
+    ref_pyramid = build_pyramid(ref_image, raw, downscale_factor_list)
+    _, h, w = ref_pyramid[0].shape
     
-    # build b&w image pyramids from images
-    ref_pyramid = build_pyramid(ref_image, downscale_factor_list)
-    comp_pyramids = [build_pyramid(image, downscale_factor_list) for image in comp_images]
-    
-    # compute the alignment (optical flow between images)
-    N, _, H, W = comp_images.shape
-    alignments = torch.zeros([N, 2, H, W], device=device)
-    for i, comp_pyramid in enumerate(comp_pyramids):
+    # iterate through the comparison images
+    merged_image = ref_image.clone() / N
+    comp_idxs = torch.arange(N)[torch.arange(N)!=ref_idx]
+    for i, comp_idx in enumerate(comp_idxs):
+
+        # build a pyramid from the comparison image
+        comp_image = images[comp_idx].to(device)
+        comp_pyramid = build_pyramid(comp_image, raw, downscale_factor_list)
+
         # start off with default alignment (no shift between images)
         alignment = torch.zeros([2, 1, 1], device=device)
         
@@ -243,15 +278,19 @@ def align_images(ref_image: Tensor,
                              alignment,
                              downscale_factor_list[min(layer_idx+1, len(ref_pyramid)-1)])
             
-        # scale the alignment to image resolution
-        alignment = upscale_previous_alignment(alignment, downscale_factor_list[0], W, H)
+        # scale the alignment to the resolution of the b&w image
+        alignment = upscale_previous_alignment(alignment, downscale_factor_list[0], w, h)
+
+        # if using a raw image, upscale alignment from the b&w superpixels to Bayer pixels
+        alignment = 2*F.interpolate(alignment[None].float(), size=(H, W), mode='nearest')[0]
         
-        # save the final alignment
-        alignments[i] = alignment
+        # warp the comparison image based on the computed alignment
+        comp_image_aligned = warp_images(comp_image[None], alignment[None])[0]
+
+        # add the aligned image to the output
+        merged_image += comp_image_aligned / N
+
+    merged_image = merged_image.cpu()
     
-    # warp the images
-    images_aligned = warp_images(comp_images, alignments)
-    
-    return images_aligned
-    
+    return merged_image
     

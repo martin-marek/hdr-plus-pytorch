@@ -2,7 +2,6 @@ import torch
 import torchvision
 import torch.nn.functional as F
 import torchvision.transforms.functional as TF
-import torch.fft as fft
 
 from torch import Tensor
 from typing import Tuple, List, Optional
@@ -264,7 +263,7 @@ def align_and_merge(images: Tensor,
     # iterate through the comparison images
     merged_image = ref_image.clone() / N
     comp_idxs = torch.arange(N)[torch.arange(N)!=ref_idx]
-    for i, comp_idx in enumerate(reversed(comp_idxs)):
+    for i, comp_idx in enumerate(comp_idxs):
 
         # build a pyramid from the comparison image
         comp_image = images[comp_idx].to(device)

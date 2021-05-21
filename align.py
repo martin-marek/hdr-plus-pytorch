@@ -1,6 +1,8 @@
 import torch
 import torchvision
 import torch.nn.functional as F
+import torchvision.transforms.functional as TF
+import torch.fft as fft
 
 from torch import Tensor
 from typing import Tuple, List, Optional
@@ -85,8 +87,9 @@ def clamp(x: Tensor, y: Tensor,
     """
     Clamp indices to layer shape.
     """
-    x = torch.clamp(x, 0, layer_w-1)
-    y = torch.clamp(y, 0, layer_h-1)
+    # use inplace operations to reduce momory usage
+    x.clamp_(0, layer_w-1)
+    y.clamp_(0, layer_h-1)
     return x, y
 
 
@@ -123,7 +126,7 @@ def build_pyramid(image: Tensor,
     else:
         # othweise, assume that the image is a demosaiced RGB image and
         # convert the RGB channels to a single b&w channel
-        layer = torchvision.transforms.functional.adjust_saturation(image, 0.0)[:1]
+        layer = TF.adjust_saturation(image, 0.0)[:1]
 
     pyramid = []
     for downscale_factor in downscale_factor_list:
@@ -171,8 +174,8 @@ def align_layers(ref_layer: Tensor,
     comp_tiles = comp_layer[0, y, x] # [n_pos*n_pos, n_tiles_y, n_tiles_x, tile_h, tile_w]
 
     # compute the difference between the comparison and reference tiles
-    diff = comp_tiles - ref_tiles # [n_pos, n_tiles_x*n_tiles_y, tile_h, tile_w]
-    diff = diff.abs().sum(dim=[-2, -1]) # [n_pos, n_tiles_y, n_tiles_x]
+    diff = comp_tiles - ref_tiles # [n_pos*n_pos, n_tiles_y, n_tiles_x, tile_h, tile_w]
+    diff = diff.abs().sum(dim=[-2, -1]) # [n_pos*n_pos, n_tiles_y, n_tiles_x]
 
     # find which shift (dx, dy) between the reference and comparison tiles yields the lowest loss
     argmin = diff.argmin(0) # [n_tiles_y, n_tiles_x]
@@ -213,12 +216,12 @@ def warp_images(images: Tensor,
     
     # apply the grid of indices to warp the images
     grid = grid.permute(0, 2, 3, 1)
-    images_warped = torch.nn.functional.grid_sample(images, grid, mode='nearest', align_corners=True, padding_mode='zeros')
+    images_warped = F.grid_sample(images, grid, mode='nearest', align_corners=True, padding_mode='zeros')
     
     return images_warped
 
 
-@torch.jit.script
+# @torch.jit.script
 def align_and_merge(images: Tensor,
                     ref_idx: int = 0,
                     device: torch.device = torch.device('cpu'),
@@ -234,7 +237,8 @@ def align_and_merge(images: Tensor,
 
     Args:
         images: burst of shape (num_frames, channels, height, width)
-        raw: treat the input as Bayer raw pixels
+        ref_idx: index of the reference image (all images are alinged to this image)
+        device: the PyTorch device to use (either 'cpu' or 'cuda')
         downscale_factor_list: scaling factor between image pyramid layers
         tile_shape_list: shape of tiles in each pyramid layer
         search_region_list: search distance [min, max] for each tile in each pyramid layer
@@ -260,7 +264,7 @@ def align_and_merge(images: Tensor,
     # iterate through the comparison images
     merged_image = ref_image.clone() / N
     comp_idxs = torch.arange(N)[torch.arange(N)!=ref_idx]
-    for i, comp_idx in enumerate(comp_idxs):
+    for i, comp_idx in enumerate(reversed(comp_idxs)):
 
         # build a pyramid from the comparison image
         comp_image = images[comp_idx].to(device)
@@ -282,7 +286,8 @@ def align_and_merge(images: Tensor,
         alignment = upscale_previous_alignment(alignment, downscale_factor_list[0], w, h)
 
         # if using a raw image, upscale alignment from the b&w superpixels to Bayer pixels
-        alignment = 2*F.interpolate(alignment[None].float(), size=(H, W), mode='nearest')[0]
+        if raw:
+            alignment = 2*F.interpolate(alignment[None].float(), size=(H, W), mode='nearest')[0]
         
         # warp the comparison image based on the computed alignment
         comp_image_aligned = warp_images(comp_image[None], alignment[None])[0]
@@ -293,4 +298,3 @@ def align_and_merge(images: Tensor,
     merged_image = merged_image.cpu()
     
     return merged_image
-    

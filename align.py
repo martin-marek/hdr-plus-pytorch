@@ -15,8 +15,8 @@ def n_tiles(layer_h: int, layer_w: int,
     Compute the desired number of tiles in a layer,
     such that they overlap.
     """
-    n_tiles_y = layer_h // (tile_h // 2)
-    n_tiles_x = layer_w // (tile_w // 2)
+    n_tiles_y = layer_h // (tile_h // 2) - 1
+    n_tiles_x = layer_w // (tile_w // 2) - 1
     return n_tiles_x, n_tiles_y
 
 
@@ -104,7 +104,7 @@ def upscale_previous_alignment(alignment: Tensor,
     from one resolution to another, taking care to scale the values.
     """
     alignment = alignment[None].float() # [1, 2, n_tiles_y, n_tiles_x]
-    alignment = F.interpolate(alignment, size=(n_tiles_y, n_tiles_x), mode='bilinear', align_corners=False)
+    alignment = F.interpolate(alignment, size=(n_tiles_y, n_tiles_x), mode='nearest')
     alignment *= downscale_factor # [1, 2, n_tiles_y, n_tiles_x]
     alignment = (alignment[0]).to(torch.int16) # [2, n_tiles_y, n_tiles_x]
     return alignment
@@ -112,21 +112,15 @@ def upscale_previous_alignment(alignment: Tensor,
 
 @torch.jit.script
 def build_pyramid(image: Tensor,
-                  raw: bool,
                   downscale_factor_list: List[int],
                  ) -> List[Tensor]:
     """
     Create an image pyramid from a single image.
     """
-    # if the image is in raw format (i.e. bayer pixels are used), convert each
-    # group of RGGB pixels in the bayer matrix to a single b&w super-pixel
-    if raw:    
-        layer = F.avg_pool2d(image[None], 2)[0]
-    else:
-        # othweise, assume that the image is a demosaiced RGB image and
-        # convert the RGB channels to a single b&w channel
-        layer = TF.adjust_saturation(image, 0.0)[:1]
+    # if the input image has multiple channels (e.g. RGB), average them to obtain a single-channel image
+    layer = torch.mean(image, 0, keepdim=True)
 
+    # iteratively build each level in the image pyramid
     pyramid = []
     for downscale_factor in downscale_factor_list:
         layer = F.avg_pool2d(layer, downscale_factor)
@@ -160,21 +154,32 @@ def align_layers(ref_layer: Tensor,
 
     # gather tiles from the reference layer
     x, y = tile_indices(layer_w, layer_h, tile_w, tile_h, n_tiles_x, n_tiles_y, device) # [n_tiles_y, n_tiles_x, tile_h, tile_w]
-    x, y = clamp(x, y, layer_w, layer_h) # [n_tiles_y, n_tiles_x, tile_h, tile_w]
     ref_tiles = ref_layer[:, y, x] # [1, n_tiles_y, n_tiles_x, tile_h, tile_w]
 
-    # gather tiles from the comparison layer
+    # compute coordinates for comparison tiles
     x, y = tile_indices(layer_w, layer_h, tile_w, tile_h, n_tiles_x, n_tiles_y, device) # [n_tiles_y, n_tiles_x, tile_h, tile_w]
     prev_alignment = upscale_previous_alignment(prev_alignment, downscale_factor, n_tiles_x, n_tiles_y) # [2, n_tiles_y, n_tiles_x]
     x += prev_alignment[0, :, :, None, None]
     y += prev_alignment[1, :, :, None, None]
     x, y = shift_indices(x, y, search_dist_min, search_dist_max) # [n_pos*n_pos, n_tiles_y, n_tiles_x, tile_h, tile_w]
+    
+    # check if each comparison tile is fully within the layer dimensions
+    tile_is_inside_layer = torch.ones([n_tiles_y, n_tiles_x], dtype=torch.bool, device=device)
+    tile_is_inside_layer &= x[:, :, :,  0,  0] >= 0
+    tile_is_inside_layer &= x[:, :, :,  0, -1] < layer_w
+    tile_is_inside_layer &= y[:, :, :,  0,  0] >= 0
+    tile_is_inside_layer &= y[:, :, :, -1,  0] < layer_h
+    
+    # gather tiles from the comparison layer
     x, y = clamp(x, y, layer_w, layer_h) # [n_pos*n_pos, n_tiles_y, n_tiles_x, tile_h, tile_w]
     comp_tiles = comp_layer[0, y, x] # [n_pos*n_pos, n_tiles_y, n_tiles_x, tile_h, tile_w]
 
     # compute the difference between the comparison and reference tiles
     diff = comp_tiles - ref_tiles # [n_pos*n_pos, n_tiles_y, n_tiles_x, tile_h, tile_w]
     diff = diff.abs().sum(dim=[-2, -1]) # [n_pos*n_pos, n_tiles_y, n_tiles_x]
+    
+    # set the difference value for tiles outside of the frame to infinity
+    diff[~tile_is_inside_layer] = float('inf')
 
     # find which shift (dx, dy) between the reference and comparison tiles yields the lowest loss
     argmin = diff.argmin(0) # [n_tiles_y, n_tiles_x]
@@ -229,10 +234,7 @@ def align_and_merge(images: Tensor,
                     search_region_list: Optional[List[List[int]]] = None
                    ) -> Tensor:
     """
-    Align and merge a burst of images. If the images only have
-    one channel, it is assumed that the images correspond to Bayer
-    pixels (in a raw file). Otherwise, it is assumed that the channels
-    are RGB.
+    Align and merge a burst of images. The input and output tensors are assumed to be on CPU device, to reduce GPU memory requirements.
 
     Args:
         images: burst of shape (num_frames, channels, height, width)
@@ -244,21 +246,22 @@ def align_and_merge(images: Tensor,
     """
     
     # process args
-    # torchscript doesn't support lists as default values, so for some
-    # args, the default is None and the lists are instantiated here
-    if downscale_factor_list is None: downscale_factor_list = [1, 2, 4, 4]
+    # - torchscript doesn't support lists as default values, so for some
+    #   args, the default is None and the lists are instantiated here
+    # - notice that downscale_factor_list[0]==2, i.e. the finest alignment uses
+    #   an image downsampled by a factor of 2 – this is to ensure that the RAW images 
+    #   are processed in a sensible way (and to speed up the computation)
+    if downscale_factor_list is None: downscale_factor_list = [2, 2, 4, 4]
     if tile_shape_list is None: tile_shape_list = [[16, 16], [16, 16], [16, 16], [16, 16]]
     if search_region_list is None: search_region_list = [[-1, 1], [-4, 4], [-4, 4], [-4, 4]]
         
-    # check whether the images are in raw (Bayer) or RGB format
+    # check the shape of the burst
     N, C, H, W = images.shape
-    raw = C == 1
 
     # build a pyramid from the reference image
     ref_idx = torch.tensor(ref_idx)
     ref_image = images[ref_idx].to(device)
-    ref_pyramid = build_pyramid(ref_image, raw, downscale_factor_list)
-    _, h, w = ref_pyramid[0].shape
+    ref_pyramid = build_pyramid(ref_image, downscale_factor_list)
     
     # iterate through the comparison images
     merged_image = ref_image.clone() / N
@@ -267,7 +270,7 @@ def align_and_merge(images: Tensor,
 
         # build a pyramid from the comparison image
         comp_image = images[comp_idx].to(device)
-        comp_pyramid = build_pyramid(comp_image, raw, downscale_factor_list)
+        comp_pyramid = build_pyramid(comp_image, downscale_factor_list)
 
         # start off with default alignment (no shift between images)
         alignment = torch.zeros([2, 1, 1], device=device)
@@ -281,12 +284,8 @@ def align_and_merge(images: Tensor,
                              alignment,
                              downscale_factor_list[min(layer_idx+1, len(ref_pyramid)-1)])
             
-        # scale the alignment to the resolution of the b&w image
-        alignment = upscale_previous_alignment(alignment, downscale_factor_list[0], w, h)
-
-        # if using a raw image, upscale alignment from the b&w superpixels to Bayer pixels
-        if raw:
-            alignment = 2*F.interpolate(alignment[None].float(), size=(H, W), mode='nearest')[0]
+        # scale the alignment to the resolution of the original image
+        alignment = upscale_previous_alignment(alignment, downscale_factor_list[0], W, H)
         
         # warp the comparison image based on the computed alignment
         comp_image_aligned = warp_images(comp_image[None], alignment[None])[0]

@@ -4,7 +4,7 @@
 
 This is a simplified PyTorch implementation of HDR+, the backbone of computational photography in Google Pixel phones, described in [Burst photography for high dynamic range and low-light imaging on mobile cameras](http://static.googleusercontent.com/media/www.hdrplusdata.org/en//hdrplus.pdf).
 
-Using a free Colab GPU, aligning 35 20MP raw images takes roughly 13 seconds.
+Using a free Colab GPU, aligning 20MP RAW images takes less than a second / frame.
  
 # Example
 
@@ -39,3 +39,18 @@ The core of my implementation is stacking all tile displacements along the batch
 - [x] CPU support (very slow)
 - [ ] color post-processing
 - [ ] automatic selection of the reference image
+
+# Citation
+
+```bibtex
+@article{hasinoff2016burst,
+  title={Burst photography for high dynamic range and low-light imaging on mobile cameras},
+  author={Hasinoff, Samuel W and Sharlet, Dillon and Geiss, Ryan and Adams, Andrew and Barron, Jonathan T and Kainz, Florian and Chen, Jiawen and Levoy, Marc},
+  journal={ACM Transactions on Graphics (ToG)},
+  volume={35},
+  number={6},
+  pages={1--12},
+  year={2016},
+  publisher={ACM New York, NY, USA}
+}
+```

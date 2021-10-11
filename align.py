@@ -182,8 +182,11 @@ def align_layers(ref_layer: Tensor,
     diff[~tile_is_inside_layer] = float('inf')
 
     # find which shift (dx, dy) between the reference and comparison tiles yields the lowest loss
+    # - it would be nice to use '//' rather than 'torch.div' but as of pytorch 1.9.0, '//' does
+    #   *not* not perform floor division in pytorch – this should be fixed in a future version
+    #   https://github.com/pytorch/pytorch/issues/43874
     argmin = diff.argmin(0) # [n_tiles_y, n_tiles_x]
-    dy = argmin // n_pos + search_dist_min # [n_tiles_y, n_tiles_x]
+    dy = torch.div(argmin, n_pos, rounding_mode='floor') + search_dist_min # [n_tiles_y, n_tiles_x]
     dx = argmin % n_pos + search_dist_min # [n_tiles_y, n_tiles_x]
 
     # save the current alignment

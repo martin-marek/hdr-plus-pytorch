@@ -210,7 +210,7 @@ def warp_images(images: Tensor,
     device = images.device
     # start off with a generic tensor of indices of each pixel
     N, C, H, W = images.shape
-    grid = torch.meshgrid(torch.arange(H, device=device), torch.arange(W, device=device))
+    grid = torch.meshgrid(torch.arange(H, device=device), torch.arange(W, device=device), indexing='ij')
     grid = torch.stack([grid[1], grid[0]], dim=0).float()
     grid = grid[None].repeat_interleave(repeats=N, dim=0)
 

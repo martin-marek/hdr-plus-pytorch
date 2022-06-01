@@ -5,11 +5,11 @@
 This is a simplified PyTorch implementation of HDR+, the backbone of computational photography in Google Pixel phones, described in [Burst photography for high dynamic range and low-light imaging on mobile cameras](http://static.googleusercontent.com/media/www.hdrplusdata.org/en//hdrplus.pdf). Using a free Colab GPU, aligning 20MP RAW images takes less than a second / frame.
 
 If you would like to use this for non-research purposes, please check out my open-source Mac app [Burst Photo](https://burst.photo).
- 
+
 # Example
 
-I took a burst of 35 images at ISO 12,800 on Sony RX100-V and boosted it by +2EV. Here's a comparison of a [single image](https://github.com/martin-marek/hdr-plus-pytorch/raw/main/illustrations/burst_sample.jpg) from the burst vs. a [merge of all the images](https://github.com/martin-marek/hdr-plus-pytorch/raw/main/illustrations/merged_image.jpg).
- 
+I took a burst of 35 images at ISO 12,800 on Sony RX100-V and boosted it by +2EV. Here's a comparison of a [single image](illustrations/burst_sample.jpg) from the burst vs. a [merge of all the images](illustrations/merged_image.jpg).
+
 ![alt text](illustrations/before_and_after.jpg)
 
 # Usage

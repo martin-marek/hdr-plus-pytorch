@@ -164,7 +164,7 @@ def align_layers(ref_layer: Tensor,
     x, y = shift_indices(x, y, search_dist_min, search_dist_max) # [n_pos*n_pos, n_tiles_y, n_tiles_x, tile_h, tile_w]
     
     # check if each comparison tile is fully within the layer dimensions
-    tile_is_inside_layer = torch.ones([n_tiles_y, n_tiles_x], dtype=torch.bool, device=device)
+    tile_is_inside_layer = torch.ones([n_pos*n_pos, n_tiles_y, n_tiles_x], dtype=torch.bool, device=device)
     tile_is_inside_layer &= x[:, :, :,  0,  0] >= 0
     tile_is_inside_layer &= x[:, :, :,  0, -1] < layer_w
     tile_is_inside_layer &= y[:, :, :,  0,  0] >= 0

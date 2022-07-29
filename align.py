@@ -30,13 +30,13 @@ def tile_indices(layer_w: int, layer_h: int,
     Computes the indices of tiles along a layer.
     """
     # compute x indices
-    x_min = torch.linspace(0, layer_w-tile_w-1, n_tiles_x, dtype=torch.int16, device=device) # [n_tiles_x]
+    x_min = torch.linspace(0, layer_w-tile_w, n_tiles_x, dtype=torch.int16, device=device) # [n_tiles_x]
     dx = torch.arange(0, tile_w, device=device) # [tile_w]
     x = x_min[:, None] + dx[None, :] # [n_tiles_x, tile_w]
     x = x[None, :, None, :].repeat(n_tiles_y, 1, tile_h, 1) # [n_tiles_y, n_tiles_x, tile_h, tile_w]
     
     # compute y indices
-    y_min = torch.linspace(0, layer_h-tile_h-1, n_tiles_y, dtype=torch.int16, device=device) # [n_tiles_y]
+    y_min = torch.linspace(0, layer_h-tile_h, n_tiles_y, dtype=torch.int16, device=device) # [n_tiles_y]
     dy = torch.arange(0, tile_h, device=device) # [tile_h]
     y = y_min[:, None] + dy[None, :] # [n_tiles_y, tile_h]
     y = y[:, None, :, None].repeat(1, n_tiles_x, 1, tile_w) # [n_tiles_y, n_tiles_x, tile_h, tile_w]

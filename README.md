@@ -4,7 +4,7 @@
 
 This is a simplified PyTorch implementation of HDR+, the backbone of computational photography in Google Pixel phones, described in [Burst photography for high dynamic range and low-light imaging on mobile cameras](http://static.googleusercontent.com/media/www.hdrplusdata.org/en//hdrplus.pdf). Using a free Colab GPU, aligning 20MP RAW images takes less than a second / frame.
 
-If you would like to use this for non-research purposes, please check out my open-source Mac app [Burst Photo](https://burst.photo).
+If you would like to use HDR+ in practice (rather than research), please check out my open-source Mac app [Burst Photo](https://burst.photo). It has a GUI, is >10x faster, supports robust merge, and uses Adobe DNG SDK (instead of LibRaw), significantly improving image quality.
 
 # Example
 

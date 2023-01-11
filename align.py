@@ -232,9 +232,8 @@ def warp_images(images: Tensor,
 def align_and_merge(images: Tensor,
                     ref_idx: int = 0,
                     device: torch.device = torch.device('cpu'),
-                    downscale_factor_list: Optional[List[int]] = None,
-                    tile_shape_list: Optional[List[List[int]]] = None,
-                    search_region_list: Optional[List[List[int]]] = None
+                    min_layer_res: int = 64,
+                    tile_size: int = 16,
                    ) -> Tensor:
     """
     Align and merge a burst of images. The input and output tensors are assumed to be on CPU device, to reduce GPU memory requirements.
@@ -243,23 +242,25 @@ def align_and_merge(images: Tensor,
         images: burst of shape (num_frames, channels, height, width)
         ref_idx: index of the reference image (all images are alinged to this image)
         device: the PyTorch device to use (either 'cpu' or 'cuda')
-        downscale_factor_list: scaling factor between image pyramid layers
-        tile_shape_list: shape of tiles in each pyramid layer
-        search_region_list: search distance [min, max] for each tile in each pyramid layer
+        min_layer_res: size of the smallest pyramid layer
+        tile_size: size of tiles in each pyramid layer
     """
-    
-    # process args
-    # - torchscript doesn't support lists as default values, so for some
-    #   args, the default is None and the lists are instantiated here
-    # - notice that downscale_factor_list[0]==2, i.e. the finest alignment uses
-    #   an image downsampled by a factor of 2 – this is to ensure that the RAW images 
-    #   are processed in a sensible way (and to speed up the computation)
-    if downscale_factor_list is None: downscale_factor_list = [2, 2, 4, 4]
-    if tile_shape_list is None: tile_shape_list = [[16, 16], [16, 16], [16, 16], [16, 16]]
-    if search_region_list is None: search_region_list = [[-1, 1], [-4, 4], [-4, 4], [-4, 4]]
         
     # check the shape of the burst
     N, C, H, W = images.shape
+    
+    # compute the necessary number of layers in the pyramid assuming
+    # that each layer has half the resolution of the previous layer
+    res = min(H, W)
+    n_layers = 0
+    while res > min_layer_res:
+        n_layers += 1
+        res /= 2
+    
+    # set alignment parameters for each layer
+    downscale_factor_list = n_layers*[2]
+    search_region_list = n_layers*[[-2, 2]]
+    tile_shape_list = n_layers*[[tile_size, tile_size]]
 
     # build a pyramid from the reference image
     ref_idx = torch.tensor(ref_idx)

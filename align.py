@@ -1,18 +1,14 @@
 import math
 import torch
-import torchvision
 import torch.nn.functional as F
-import torchvision.transforms.functional as TF
 from functorch.dim import dims
-
 from torch import Tensor
 from typing import List
 
 
-@torch.jit.script
 def upscale_previous_alignment(alignment: Tensor,
                                downscale_factor: int,
-                               n_tiles_x: int, n_tiles_y: int
+                               w: int, h: int
                               ) -> Tensor:
     """
     When layers in an image pyramid are iteratively compared,
@@ -20,14 +16,12 @@ def upscale_previous_alignment(alignment: Tensor,
     relative distances. This function interpolates an optical flow
     from one resolution to another, taking care to scale the values.
     """
-    alignment = alignment[None].float() # [1, 2, n_tiles_y, n_tiles_x]
-    alignment = F.interpolate(alignment, size=(n_tiles_y, n_tiles_x), mode='nearest')
-    alignment *= downscale_factor # [1, 2, n_tiles_y, n_tiles_x]
-    alignment = (alignment[0]).to(torch.int16) # [2, n_tiles_y, n_tiles_x]
+    alignment = alignment[None].float()
+    alignment = downscale_factor * F.interpolate(alignment, size=(h, w), mode='nearest')
+    alignment = alignment[0].int()
     return alignment
 
 
-@torch.jit.script
 def build_pyramid(image: Tensor,
                   downscale_factor_list: List[int],
                  ) -> List[Tensor]:
@@ -72,8 +66,8 @@ def align_layers(ref_layer: Tensor,
 
     # get reference image tiles (no shift)
     channel, tile_idx_y, tile_idx_x, tile_h, tile_w = dims(sizes=[None, n_tiles_y, n_tiles_x, tile_size, tile_size])
-    x_min = torch.linspace(0, layer_width-tile_size,  n_tiles_x, dtype=torch.int16, device=device)[tile_idx_x]
-    y_min = torch.linspace(0, layer_height-tile_size, n_tiles_y, dtype=torch.int16, device=device)[tile_idx_y]
+    x_min = torch.linspace(0, layer_width-tile_size,  n_tiles_x, dtype=torch.int32, device=device)[tile_idx_x]
+    y_min = torch.linspace(0, layer_height-tile_size, n_tiles_y, dtype=torch.int32, device=device)[tile_idx_y]
     x = x_min + tile_w
     y = y_min + tile_h
     ref_tiles = ref_layer[channel, y, x]
@@ -100,7 +94,7 @@ def align_layers(ref_layer: Tensor,
 
     # save the current alignment
     alignment = torch.stack([dx, dy], 0) # [2, n_tiles_y, n_tiles_x]
-
+    
     # combine the current alignment with the previous alignment
     alignment += prev_alignment
 
@@ -156,14 +150,13 @@ def align_and_merge(images: Tensor,
         comp_pyramid = build_pyramid(comp_image, downscale_factor_list)
 
         # start off with default alignment (no shift between images)
-        alignment = torch.zeros([2, 1, 1], device=device)
+        alignment = torch.zeros([2, 1, 1], dtype=torch.int32, device=device)
         
         # iteratively improve the alignment in each pyramid layer
         for layer_idx in torch.flip(torch.arange(len(ref_pyramid)), [0]):
             downscale_factor = downscale_factor_list[min(layer_idx+1, len(ref_pyramid)-1)]
             alignment = align_layers(ref_pyramid[layer_idx], comp_pyramid[layer_idx],
                                      alignment, tile_size, search_dist, downscale_factor)
-            # print(f'{layer_idx=} done')
             
         # scale the alignment to the resolution of the original image
         alignment = upscale_previous_alignment(alignment, downscale_factor_list[0], W, H)

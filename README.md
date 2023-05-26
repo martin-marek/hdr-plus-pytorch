@@ -2,9 +2,9 @@
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/martin-marek/hdr-plus-pytorch/blob/main/demo.ipynb)
 
-This is a simplified PyTorch implementation of HDR+, the backbone of computational photography in Google Pixel phones, described in [Burst photography for high dynamic range and low-light imaging on mobile cameras](http://static.googleusercontent.com/media/www.hdrplusdata.org/en//hdrplus.pdf). Using a free Colab GPU, aligning 20MP RAW images takes less than a second / frame.
+This is a simplified PyTorch implementation of HDR+, the backbone of computational photography in Google Pixel phones, described in [Burst photography for high dynamic range and low-light imaging on mobile cameras](http://static.googleusercontent.com/media/www.hdrplusdata.org/en//hdrplus.pdf). Using a free Colab GPU, aligning 20MP RAW images takes ~200 ms/frame.
 
-If you would like to use HDR+ in practice (rather than research), please check out my open-source Mac app [Burst Photo](https://burst.photo). It has a GUI, is >10x faster, supports robust merge, and uses Adobe DNG SDK (instead of LibRaw), significantly improving image quality.
+If you would like to use HDR+ in practice (rather than research), please check out my open-source Mac app [Burst Photo](https://burst.photo). It has a GUI, supports robust merge, and uses Adobe DNG SDK (instead of LibRaw), significantly improving image quality.
 
 # Example
 
@@ -24,9 +24,7 @@ merged_image = align.align_and_merge(images)
 
 # Implementation details
 
-The core of my implementation is stacking all tile displacements along the batch dimension and performing comparisons with the help of broadcasting. I've illustrated this for the simplest case of 9 displacements of a 5x5 tile. In reality, the number of tiles and displacements is large. I've annotated the shape of most tensors in my code, so that it's easy to see what's going on in every line.
-
-![alt text](illustrations/tiles.png)
+The implementation heavily relies on [first class dimensions](https://github.com/facebookresearch/torchdim), which allows for vectorized code that resembles the use of explicit loops. [Previous versions](https://github.com/martin-marek/hdr-plus-pytorch/blob/322c6039393074cefd9c5082006b509d5121aad1/align.py) of this repo used standard NumPy-style broadcasting but that was slower, harder to read, and required more loc.
 
 # Features
 - [x] jpeg support

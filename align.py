@@ -1,3 +1,4 @@
+import math
 import torch
 import torchvision
 import torch.nn.functional as F
@@ -106,34 +107,18 @@ def align_layers(ref_layer: Tensor,
     return alignment
 
 
-@torch.jit.script
-def warp_images(images: Tensor,
-                alignments: Tensor
+# @torch.jit.script
+def warp_image(image: Tensor,
+               alignment: Tensor
                ) -> Tensor:
     """
-    Given a batch of images and their optical
-    flows with respect to a reference image,
-    warps the images using the given optical flow.
+    Warps image using optical flow.
     """
-    device = images.device
-    # start off with a generic tensor of indices of each pixel
-    N, C, H, W = images.shape
-    grid = torch.meshgrid(torch.arange(H, device=device), torch.arange(W, device=device), indexing='ij')
-    grid = torch.stack([grid[1], grid[0]], dim=0).float()
-    grid = grid[None].repeat_interleave(repeats=N, dim=0)
-
-    # apply the optical flow to the indices
-    grid += alignments
-    
-    # scale the indices to [-1, 1] in x and y
-    grid[:, 0] = (grid[:, 0] / (W-1))*2 - 1
-    grid[:, 1] = (grid[:, 1] / (H-1))*2 - 1
-    
-    # apply the grid of indices to warp the images
-    grid = grid.permute(0, 2, 3, 1)
-    images_warped = F.grid_sample(images, grid, mode='nearest', align_corners=True, padding_mode='zeros')
-    
-    return images_warped
+    dx, dy = alignment
+    C, H, W = image.shape
+    channel, y, x = dims(sizes=[C, H, W])
+    warped = image[channel, (y + dy[y, x]).clamp(0, H-1), (x + dx[y, x]).clamp(0, W-1)]
+    return warped.order(channel, y, x)
 
 
 def align_and_merge(images: Tensor,
@@ -157,15 +142,8 @@ def align_and_merge(images: Tensor,
     # check the shape of the burst
     N, C, H, W = images.shape
     
-    # compute the necessary number of layers in the pyramid assuming
-    # that each layer has half the resolution of the previous layer
-    res = min(H, W)
-    n_layers = 0
-    while res > min_layer_res:
-        n_layers += 1
-        res /= 2
-    
     # build a pyramid from the reference image
+    n_layers = math.ceil(math.log2(min(H, W) / min_layer_res))
     downscale_factor_list = n_layers*[2]
     ref_idx = torch.tensor(ref_idx)
     ref_image = images[ref_idx].to(device)
@@ -188,12 +166,13 @@ def align_and_merge(images: Tensor,
             downscale_factor = downscale_factor_list[min(layer_idx+1, len(ref_pyramid)-1)]
             alignment = align_layers(ref_pyramid[layer_idx], comp_pyramid[layer_idx],
                                      alignment, tile_size, search_dist, downscale_factor)
+            # print(f'{layer_idx=} done')
             
         # scale the alignment to the resolution of the original image
         alignment = upscale_previous_alignment(alignment, downscale_factor_list[0], W, H)
         
         # warp the comparison image based on the computed alignment
-        comp_image_aligned = warp_images(comp_image[None], alignment[None])[0]
+        comp_image_aligned = warp_image(comp_image, alignment)
 
         # add the aligned image to the output
         merged_image += comp_image_aligned / N

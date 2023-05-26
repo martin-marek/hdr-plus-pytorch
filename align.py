@@ -107,10 +107,7 @@ def align_layers(ref_layer: Tensor,
     return alignment
 
 
-# @torch.jit.script
-def warp_image(image: Tensor,
-               alignment: Tensor
-               ) -> Tensor:
+def warp_image(image: Tensor, alignment: Tensor) -> Tensor:
     """
     Warps image using optical flow.
     """

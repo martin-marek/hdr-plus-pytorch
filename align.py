@@ -74,18 +74,18 @@ def align_layers(ref_layer: Tensor,
 
     # get comparison image tiles (shifted)
     shift_x, shift_y = dims(sizes=[1+2*search_dist, 1+2*search_dist])
-    x = (x + prev_alignment[0, tile_idx_y, tile_idx_x] + (shift_x - search_dist)).clip(0, layer_width-1)
-    y = (y + prev_alignment[1, tile_idx_y, tile_idx_x] + (shift_y - search_dist)).clip(0, layer_height-1)
-    comp_tiles = comp_layer[channel, y, x]
+    x = x + prev_alignment[0, tile_idx_y, tile_idx_x] + (shift_x - search_dist)
+    y = y + prev_alignment[1, tile_idx_y, tile_idx_x] + (shift_y - search_dist)
+    comp_tiles = comp_layer[channel, y.clip(0, layer_height-1), x.clip(0, layer_width-1)]
 
     # compute the difference between the reference and comparison tiles
     diff = (ref_tiles - comp_tiles).abs().sum([channel, tile_w, tile_h])
     diff = diff.order(tile_idx_y, tile_idx_x, (shift_y, shift_x))
 
     # set the difference value for tiles outside of the frame to infinity
-    tile_is_inside_layer = ((x<0)^(x>=layer_width)).sum(tile_w) + ((y<0)^(y>=layer_height)).sum(tile_h) == 0
-    tile_is_inside_layer = tile_is_inside_layer.order(tile_idx_y, tile_idx_x, (shift_y, shift_x))
-    diff[~tile_is_inside_layer] = float('inf')
+    tile_is_outside_layer = ((x<0)^(x>=layer_width)).sum(tile_w) + ((y<0)^(y>=layer_height)).sum(tile_h) > 0
+    tile_is_outside_layer = tile_is_outside_layer.order(tile_idx_y, tile_idx_x, (shift_y, shift_x))
+    diff[tile_is_outside_layer] = float('inf')
 
     # find which shift (dx, dy) between the reference and comparison tiles yields the lowest loss
     min_idx = torch.argmin(diff, -1)
